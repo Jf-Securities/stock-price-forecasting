@@ -406,11 +406,59 @@ def process_data():
         print("#", i, "runtime: ", (end - start) / 1000.0, "s")
 
 
+def process_data_without_training():
+    all_data = create_files_dict("/home/nischit/Desktop/data/")
+    i = 0
+    for stock_name, stock_data in all_data.items():
+        start = time.time() * 1000
+        if i > 50:
+            print("Max run count reached")
+            break
+        print("#", i, "PROCESSING::", stock_name)
+        # create dl data
+        X_train, y_train, X_test, sc = create_dl_train_test_split(stock_data)
+        if X_train is None:
+            print("Skipping this because insufficient data")
+            continue
+
+        small_single_layer_rnn, small_one_layer_preds = predict_trend(MODELS["single_layer_small_rnn_model"], X_test,
+                                                                      sc)
+        #
+        # # create single layer rnn preds
+        single_layer_rnn, one_layer_preds = predict_trend(MODELS["single_layer_rnn_model"], X_test, sc)
+        #
+        # # rnn daily preds
+        rnn_model, rnn_preds = predict_trend(MODELS["rnn_model"], X_test, sc)
+        #
+        # # gru daily preds
+        gru_model, gru_preds = predict_trend_gru(MODELS["GRU_model"], X_test, sc)
+        #
+        # # gru daily preds
+        gru_drop_model, gru_drop_preds = predict_trend_gru(MODELS["GRU_with_drop_out_model"], X_test, sc)
+        #
+        # yearly preds
+        yearly_preds = create_prophet_results(stock_data)
+
+        # plot results
+        plot_results(stock_data,
+                     stock_name,
+                     small_one_layer_preds,
+                     one_layer_preds,
+                     rnn_preds,
+                     gru_preds,
+                     gru_drop_preds,
+                     yearly_preds
+                     )
+        i += 1
+        end = time.time() * 1000
+        print("#", i, "runtime: ", (end - start) / 1000.0, "s")
+
+
 if __name__ == '__main__':
 
     load_models()
     try:
-        process_data()
+        process_data_without_training()
     except:
         print("Something went wrong when processing data")
     save_models()
