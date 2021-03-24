@@ -3,26 +3,28 @@ Script to run time series models against all data in the \data folder.
 
 Author: @josh
 '''
+import os
+import time
+
+import keras
 import matplotlib.pyplot as plt
 import numpy as np
-import os
 import pandas as pd
+import tensorflow as tf
 from fbprophet import Prophet
-from keras import backend as K
 from keras.layers import Dense, Dropout, GRU, SimpleRNN
 from keras.models import Sequential
 from keras.optimizers import SGD
 from sklearn.preprocessing import MinMaxScaler
-from tensorflow.python.client import device_lib
 
-print("---------------------\n")
-print(device_lib.list_local_devices())
-print(K.tensorflow_backend._get_available_gpus())
-print("---------------------\n")
+config = tf.compat.v1.ConfigProto()
+config.gpu_options.allow_growth = True
+session = tf.compat.v1.Session(config=config)
 
 plt.style.use('fivethirtyeight')
 
 DAYS = 10
+MODELS = {}
 
 
 def create_files_dict(pth='./data/'):
@@ -81,6 +83,8 @@ def create_dl_train_test_split(all_data):
 
     # scale the data
     sc = MinMaxScaler(feature_range=(0, 1))
+    if len(training_set) < 200:
+        return None, None, None, None
     training_set_scaled = sc.fit_transform(training_set)
 
     # create training and test data
@@ -117,15 +121,17 @@ def create_single_layer_small_rnn_model(X_train, y_train):
     and make predictions on the X_test data
     '''
     # create a model
-    model = Sequential()
-    model.add(SimpleRNN(6))
-    model.add(Dense(1))
-
-    model.compile(optimizer='rmsprop', loss='mean_squared_error')
+    model = MODELS.get("single_layer_small_rnn_model")
+    if model is None:
+        model = Sequential()
+        model.add(SimpleRNN(6))
+        model.add(Dense(1))
+        model.compile(optimizer='rmsprop', loss='mean_squared_error')
 
     # fit the RNN model
     model.fit(X_train, y_train, epochs=100, batch_size=150)
 
+    MODELS["single_layer_small_rnn_model"] = model
     return model
 
 
@@ -140,14 +146,17 @@ def create_single_layer_rnn_model(X_train, y_train):
     and make predictions on the X_test data
     '''
     # create a model
-    model = Sequential()
-    model.add(SimpleRNN(32))
-    model.add(Dense(1))
-
-    model.compile(optimizer='rmsprop', loss='mean_squared_error')
+    model = MODELS.get("single_layer_rnn_model")
+    if model is None:
+        model = Sequential()
+        model.add(SimpleRNN(32))
+        model.add(Dense(1))
+        model.compile(optimizer='rmsprop', loss='mean_squared_error')
 
     # fit the RNN model
     model.fit(X_train, y_train, epochs=100, batch_size=150)
+
+    MODELS["single_layer_rnn_model"] = model
 
     return model
 
@@ -158,17 +167,20 @@ def create_rnn_model(X_train, y_train):
     and make predictions on the X_test data
     '''
     # create a model
-    model = Sequential()
-    model.add(SimpleRNN(32, return_sequences=True))
-    model.add(SimpleRNN(32, return_sequences=True))
-    model.add(SimpleRNN(32, return_sequences=True))
-    model.add(SimpleRNN(32))
-    model.add(Dense(1))
-
-    model.compile(optimizer='rmsprop', loss='mean_squared_error')
+    model = MODELS.get("rnn_model")
+    if model is None:
+        model = Sequential()
+        model.add(SimpleRNN(32, return_sequences=True))
+        model.add(SimpleRNN(32, return_sequences=True))
+        model.add(SimpleRNN(32, return_sequences=True))
+        model.add(SimpleRNN(32))
+        model.add(Dense(1))
+        model.compile(optimizer='rmsprop', loss='mean_squared_error')
 
     # fit the RNN model
     model.fit(X_train, y_train, epochs=100, batch_size=150)
+
+    MODELS["rnn_model"] = model
 
     return model
 
@@ -179,25 +191,29 @@ def create_GRU_model(X_train, y_train):
     and make predictions on the X_test data
     '''
     # The GRU architecture
-    regressorGRU = Sequential()
-    # First GRU layer with Dropout regularisation
-    regressorGRU.add(GRU(units=50, return_sequences=True,
-                         input_shape=(X_train.shape[1], 1), activation='tanh'))
-    regressorGRU.add(GRU(units=50, return_sequences=True, activation='tanh'))
-    regressorGRU.add(GRU(units=50, return_sequences=True, activation='tanh'))
-    regressorGRU.add(GRU(units=50, activation='tanh'))
-    regressorGRU.add(Dense(units=1))
+    regressorGRU = MODELS.get("GRU_model")
+    if regressorGRU is None:
+        regressorGRU = Sequential()
+        # First GRU layer with Dropout regularisation
+        regressorGRU.add(GRU(units=50, return_sequences=True,
+                             input_shape=(X_train.shape[1], 1), activation='tanh'))
+        regressorGRU.add(GRU(units=50, return_sequences=True, activation='tanh'))
+        regressorGRU.add(GRU(units=50, return_sequences=True, activation='tanh'))
+        regressorGRU.add(GRU(units=50, activation='tanh'))
+        regressorGRU.add(Dense(units=1))
 
-    # Compiling the RNN
-    regressorGRU.compile(
-        optimizer=SGD(
-            lr=0.01,
-            decay=1e-7,
-            momentum=0.9,
-            nesterov=False),
-        loss='mean_squared_error')
+        # Compiling the RNN
+        regressorGRU.compile(
+            optimizer=SGD(
+                lr=0.01,
+                decay=1e-7,
+                momentum=0.9,
+                nesterov=False),
+            loss='mean_squared_error')
     # Fitting to the training set
     regressorGRU.fit(X_train, y_train, epochs=50, batch_size=150)
+
+    MODELS["GRU_model"] = regressorGRU
 
     return regressorGRU
 
@@ -213,32 +229,36 @@ def create_GRU_with_drop_out_model(X_train, y_train):
     and make predictions on the X_test data
     '''
     # The GRU architecture
-    regressorGRU = Sequential()
-    # First GRU layer with Dropout regularisation
-    regressorGRU.add(GRU(units=50, return_sequences=True,
-                         input_shape=(X_train.shape[1], 1), activation='tanh'))
-    regressorGRU.add(Dropout(0.2))
-    # Second GRU layer
-    regressorGRU.add(GRU(units=50, return_sequences=True, activation='tanh'))
-    regressorGRU.add(Dropout(0.2))
-    # Third GRU layer
-    regressorGRU.add(GRU(units=50, return_sequences=True, activation='tanh'))
-    regressorGRU.add(Dropout(0.2))
-    # Fourth GRU layer
-    regressorGRU.add(GRU(units=50, activation='tanh'))
-    regressorGRU.add(Dropout(0.2))
-    # The output layer
-    regressorGRU.add(Dense(units=1))
-    # Compiling the RNN
-    regressorGRU.compile(
-        optimizer=SGD(
-            lr=0.01,
-            decay=1e-7,
-            momentum=0.9,
-            nesterov=False),
-        loss='mean_squared_error')
+    regressorGRU = MODELS.get("GRU_with_drop_out_model")
+    if regressorGRU is None:
+        regressorGRU = Sequential()
+        # First GRU layer with Dropout regularisation
+        regressorGRU.add(GRU(units=50, return_sequences=True,
+                             input_shape=(X_train.shape[1], 1), activation='tanh'))
+        regressorGRU.add(Dropout(0.2))
+        # Second GRU layer
+        regressorGRU.add(GRU(units=50, return_sequences=True, activation='tanh'))
+        regressorGRU.add(Dropout(0.2))
+        # Third GRU layer
+        regressorGRU.add(GRU(units=50, return_sequences=True, activation='tanh'))
+        regressorGRU.add(Dropout(0.2))
+        # Fourth GRU layer
+        regressorGRU.add(GRU(units=50, activation='tanh'))
+        regressorGRU.add(Dropout(0.2))
+        # The output layer
+        regressorGRU.add(Dense(units=1))
+        # Compiling the RNN
+        regressorGRU.compile(
+            optimizer=SGD(
+                lr=0.01,
+                decay=1e-7,
+                momentum=0.9,
+                nesterov=False),
+            loss='mean_squared_error')
     # Fitting to the training set
     regressorGRU.fit(X_train, y_train, epochs=50, batch_size=150)
+
+    MODELS["GRU_with_drop_out_model"] = regressorGRU
 
     return regressorGRU
 
@@ -263,99 +283,6 @@ def create_prophet_results(all_data):
     return forecast_prices
 
 
-def create_prophet_daily_results(data):
-    '''
-
-    '''
-    test_results = pd.DataFrame()
-    for val in range(2768, 3019):
-        # format training dataframe
-        df = data['High'][:val].reset_index()
-        df.columns = ['ds', 'y']
-
-        # Instantiate and fit the model
-        proph_model = Prophet(daily_seasonality=True)
-        proph_model.fit(df)
-
-        # create test dataframe
-        test_dates = proph_model.make_future_dataframe(periods=1)
-
-        # store test results in dataframe
-        preds = proph_model.predict(test_dates).tail(1)
-        test_results = test_results.append(preds)
-
-    return test_results
-
-
-def plot_results(actuals,
-                 stock_name,
-                 small_one_layer_preds,
-                 one_layer_preds,
-                 rnn_preds,
-                 gru_preds,
-                 gru_drop_preds,
-                 yearly_prophet_preds,
-                 plot_pth='./figures'):
-    '''
-    plot the results
-    '''
-    plt.figure(figsize=(20, 5))
-
-    historyData = stock_data["High"][-120:].values[:-1]
-
-    plt.plot(np.append(historyData, small_one_layer_preds), label='Single Layer Small RNN values')
-    plt.plot(np.append(historyData, one_layer_preds), label='Single Layer RNN values')
-    plt.plot(np.append(historyData, rnn_preds), label='RNN values')
-    plt.plot(np.append(historyData, gru_preds), label='GRU without dropout values')
-    plt.plot(np.append(historyData, gru_drop_preds), label='GRU with dropout values')
-    plt.plot(np.append(historyData, yearly_prophet_preds.reset_index()['yhat'].values[-10:]),
-             label='prophet yearly predictions')
-    plt.plot(historyData, label='actual values')
-    plt.title('{} Predictions from Prophet vs. Actual'.format(stock_name))
-    plt.legend()
-
-    fig_path = os.path.join(plot_pth, 'results', stock_name + '_preds')
-
-    # save the data, pause, and close
-    plt.savefig(fig_path)
-    plt.pause(1)
-    plt.close()
-
-
-#
-#
-# def plot_results(actuals,
-#                  stock_name,
-#                  small_one_layer_preds,
-#                  one_layer_preds,
-#                  yearly_prophet_preds,
-#                  gru_drop_preds,
-#                  rnn_preds,
-#                  gru_preds,
-#                  plot_pth='./figures'):
-#     '''
-#     plot the results
-#     '''
-#     plt.figure(figsize=(20, 5))
-#     plt.plot(yearly_prophet_preds.reset_index()[
-#                  'yhat'].values[-250:], label='prophet yearly predictions')
-#     plt.plot(stock_data["High"]['2017':].values[:-1], label='actual values')
-#     plt.plot(small_one_layer_preds, label='Single Layer Small RNN values')
-#     plt.plot(one_layer_preds, label='Single Layer RNN values')
-#     plt.plot(gru_drop_preds, label='GRU with dropout values')
-#     plt.plot(rnn_preds, label='RNN values')
-#     plt.plot(gru_preds, label='GRU values')
-#     plt.title('{} Predictions from Prophet vs. Actual'.format(stock_name))
-#     plt.legend()
-#
-#     fig_path = os.path.join(plot_pth, 'results', stock_name + '_preds')
-#
-#     # save the data, pause, and close
-#     plt.savefig(fig_path)
-#     plt.pause(1)
-#     plt.close()
-
-
 def predict_trend(model, X_test, sc):
     predicted_prices = []
     for i in range(0, DAYS):
@@ -374,11 +301,77 @@ def predict_trend_gru(model, X_test, sc):
     return model, predicted_prices
 
 
-if __name__ == '__main__':
-    all_data = create_files_dict()
+def load_models():
+    try:
+        MODELS["single_layer_small_rnn_model"] = keras.models.load_model(
+            "/home/nischit/Desktop/models/single_layer_small_rnn_model")
+        MODELS["single_layer_rnn_model"] = keras.models.load_model(
+            "/home/nischit/Desktop/models/single_layer_rnn_model")
+        MODELS["rnn_model"] = keras.models.load_model("/home/nischit/Desktop/models/rnn_model")
+        MODELS["GRU_model"] = keras.models.load_model("/home/nischit/Desktop/models/GRU_model")
+        MODELS["GRU_with_drop_out_model"] = keras.models.load_model(
+            "/home/nischit/Desktop/models/GRU_with_drop_out_model")
+    except:
+        print("Couldn't load models")
+
+
+def save_models():
+    MODELS["single_layer_small_rnn_model"].save("/home/nischit/Desktop/models/single_layer_small_rnn_model")
+    MODELS["single_layer_rnn_model"].save("/home/nischit/Desktop/models/single_layer_rnn_model")
+    MODELS["rnn_model"].save("/home/nischit/Desktop/models/rnn_model")
+    MODELS["GRU_model"].save("/home/nischit/Desktop/models/GRU_model")
+    MODELS["GRU_with_drop_out_model"].save("/home/nischit/Desktop/models/GRU_with_drop_out_model")
+
+
+def plot_results(stock_data,
+                 stock_name,
+                 small_one_layer_preds,
+                 one_layer_preds,
+                 rnn_preds,
+                 gru_preds,
+                 gru_drop_preds,
+                 yearly_prophet_preds,
+                 plot_pth='./figures'):
+    '''
+    plot the results
+    '''
+    plt.figure(figsize=(20, 5))
+
+    historyData = stock_data["High"][-120:].values[:-1]
+
+    plt.plot(np.append(historyData, small_one_layer_preds), label='Single Layer Small RNN values', alpha=0.5)
+    plt.plot(np.append(historyData, one_layer_preds), label='Single Layer RNN values', alpha=0.5)
+    plt.plot(np.append(historyData, rnn_preds), label='RNN values', alpha=0.5)
+    plt.plot(np.append(historyData, gru_preds), label='GRU without dropout values', alpha=0.5)
+    plt.plot(np.append(historyData, gru_drop_preds), label='GRU with dropout values', alpha=0.5)
+    plt.plot(np.append(historyData, yearly_prophet_preds.reset_index()['yhat'].values[-10:]),
+             label='prophet yearly predictions', alpha=0.5)
+    plt.plot(historyData, label='actual values', color='black')
+    plt.title('{} Predictions vs. Actual'.format(stock_name))
+    plt.legend()
+
+    fig_path = os.path.join(plot_pth, 'results', stock_name + '_preds')
+
+    # save the data, pause, and close
+    plt.savefig(fig_path)
+    # plt.pause(1)
+    plt.close()
+
+
+def process_data():
+    all_data = create_files_dict("/home/nischit/Desktop/data/")
+    i = 0
     for stock_name, stock_data in all_data.items():
+        start = time.time() * 1000
+        if i > 50:
+            print("Max run count reached")
+            break
+        print("#", i, "PROCESSING::", stock_name)
         # create dl data
         X_train, y_train, X_test, sc = create_dl_train_test_split(stock_data)
+        if X_train is None:
+            print("Skipping this because insufficient data")
+            continue
 
         small_single_layer_rnn, small_one_layer_preds = predict_trend(
             create_single_layer_small_rnn_model(X_train, y_train), X_test, sc)
@@ -408,3 +401,17 @@ if __name__ == '__main__':
                      gru_drop_preds,
                      yearly_preds
                      )
+        i += 1
+        end = time.time() * 1000
+        print("#", i, "runtime: ", (end - start) / 1000.0, "s")
+
+
+if __name__ == '__main__':
+
+    load_models()
+    try:
+        process_data()
+    except:
+        print("Something went wrong when processing data")
+    save_models()
+    print("DONE!")
