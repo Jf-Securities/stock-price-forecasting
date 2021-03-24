@@ -6,7 +6,6 @@ Author: @josh
 import os
 import time
 
-import keras
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -24,7 +23,6 @@ session = tf.compat.v1.Session(config=config)
 plt.style.use('fivethirtyeight')
 
 DAYS = 10
-MODELS = {}
 
 
 def create_files_dict(pth='./data/'):
@@ -121,7 +119,7 @@ def create_single_layer_small_rnn_model(X_train, y_train):
     and make predictions on the X_test data
     '''
     # create a model
-    model = MODELS.get("single_layer_small_rnn_model")
+    model = None
     if model is None:
         model = Sequential()
         model.add(SimpleRNN(6))
@@ -131,7 +129,6 @@ def create_single_layer_small_rnn_model(X_train, y_train):
     # fit the RNN model
     model.fit(X_train, y_train, epochs=100, batch_size=150)
 
-    MODELS["single_layer_small_rnn_model"] = model
     return model
 
 
@@ -146,7 +143,7 @@ def create_single_layer_rnn_model(X_train, y_train):
     and make predictions on the X_test data
     '''
     # create a model
-    model = MODELS.get("single_layer_rnn_model")
+    model = None
     if model is None:
         model = Sequential()
         model.add(SimpleRNN(32))
@@ -155,8 +152,6 @@ def create_single_layer_rnn_model(X_train, y_train):
 
     # fit the RNN model
     model.fit(X_train, y_train, epochs=100, batch_size=150)
-
-    MODELS["single_layer_rnn_model"] = model
 
     return model
 
@@ -167,7 +162,7 @@ def create_rnn_model(X_train, y_train):
     and make predictions on the X_test data
     '''
     # create a model
-    model = MODELS.get("rnn_model")
+    model = None
     if model is None:
         model = Sequential()
         model.add(SimpleRNN(32, return_sequences=True))
@@ -180,8 +175,6 @@ def create_rnn_model(X_train, y_train):
     # fit the RNN model
     model.fit(X_train, y_train, epochs=100, batch_size=150)
 
-    MODELS["rnn_model"] = model
-
     return model
 
 
@@ -191,7 +184,7 @@ def create_GRU_model(X_train, y_train):
     and make predictions on the X_test data
     '''
     # The GRU architecture
-    regressorGRU = MODELS.get("GRU_model")
+    regressorGRU = None
     if regressorGRU is None:
         regressorGRU = Sequential()
         # First GRU layer with Dropout regularisation
@@ -213,8 +206,6 @@ def create_GRU_model(X_train, y_train):
     # Fitting to the training set
     regressorGRU.fit(X_train, y_train, epochs=50, batch_size=150)
 
-    MODELS["GRU_model"] = regressorGRU
-
     return regressorGRU
 
 
@@ -229,7 +220,7 @@ def create_GRU_with_drop_out_model(X_train, y_train):
     and make predictions on the X_test data
     '''
     # The GRU architecture
-    regressorGRU = MODELS.get("GRU_with_drop_out_model")
+    regressorGRU = None
     if regressorGRU is None:
         regressorGRU = Sequential()
         # First GRU layer with Dropout regularisation
@@ -257,8 +248,6 @@ def create_GRU_with_drop_out_model(X_train, y_train):
             loss='mean_squared_error')
     # Fitting to the training set
     regressorGRU.fit(X_train, y_train, epochs=50, batch_size=150)
-
-    MODELS["GRU_with_drop_out_model"] = regressorGRU
 
     return regressorGRU
 
@@ -299,28 +288,6 @@ def predict_trend_gru(model, X_test, sc):
         X_test = np.append(X_test, scaled_pred)[1:].reshape(X_test.shape[0], X_test.shape[1], 1)
         predicted_prices.append(sc.inverse_transform(scaled_pred))
     return model, predicted_prices
-
-
-def load_models():
-    try:
-        MODELS["single_layer_small_rnn_model"] = keras.models.load_model(
-            "/home/nischit/Desktop/models/single_layer_small_rnn_model")
-        MODELS["single_layer_rnn_model"] = keras.models.load_model(
-            "/home/nischit/Desktop/models/single_layer_rnn_model")
-        MODELS["rnn_model"] = keras.models.load_model("/home/nischit/Desktop/models/rnn_model")
-        MODELS["GRU_model"] = keras.models.load_model("/home/nischit/Desktop/models/GRU_model")
-        MODELS["GRU_with_drop_out_model"] = keras.models.load_model(
-            "/home/nischit/Desktop/models/GRU_with_drop_out_model")
-    except:
-        print("Couldn't load models")
-
-
-def save_models():
-    MODELS["single_layer_small_rnn_model"].save("/home/nischit/Desktop/models/single_layer_small_rnn_model")
-    MODELS["single_layer_rnn_model"].save("/home/nischit/Desktop/models/single_layer_rnn_model")
-    MODELS["rnn_model"].save("/home/nischit/Desktop/models/rnn_model")
-    MODELS["GRU_model"].save("/home/nischit/Desktop/models/GRU_model")
-    MODELS["GRU_with_drop_out_model"].save("/home/nischit/Desktop/models/GRU_with_drop_out_model")
 
 
 def plot_results(stock_data,
@@ -455,11 +422,8 @@ def process_data_without_training():
 
 
 if __name__ == '__main__':
-
-    load_models()
     try:
-        process_data_without_training()
+        process_data()
     except:
         print("Something went wrong when processing data")
-    save_models()
     print("DONE!")
