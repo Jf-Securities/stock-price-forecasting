@@ -388,20 +388,21 @@ def process_data_without_training():
             print("Skipping this because insufficient data")
             continue
 
-        small_single_layer_rnn, small_one_layer_preds = predict_trend(MODELS["single_layer_small_rnn_model"], X_test,
-                                                                      sc)
+        small_single_layer_rnn, small_one_layer_preds = predict_trend(
+            create_single_layer_small_rnn_model(X_train, y_train), X_test,
+            sc)
         #
         # # create single layer rnn preds
-        single_layer_rnn, one_layer_preds = predict_trend(MODELS["single_layer_rnn_model"], X_test, sc)
+        single_layer_rnn, one_layer_preds = predict_trend(create_single_layer_rnn_model(X_train, y_train), X_test, sc)
         #
         # # rnn daily preds
-        rnn_model, rnn_preds = predict_trend(MODELS["rnn_model"], X_test, sc)
+        rnn_model, rnn_preds = predict_trend(create_rnn_model(X_train, y_train), X_test, sc)
         #
         # # gru daily preds
-        gru_model, gru_preds = predict_trend_gru(MODELS["GRU_model"], X_test, sc)
+        gru_model, gru_preds = predict_trend_gru(create_GRU_model(X_train, y_train), X_test, sc)
         #
         # # gru daily preds
-        gru_drop_model, gru_drop_preds = predict_trend_gru(MODELS["GRU_with_drop_out_model"], X_test, sc)
+        gru_drop_model, gru_drop_preds = predict_trend_gru(create_GRU_with_drop_out_model(X_train, y_train), X_test, sc)
         #
         # yearly preds
         yearly_preds = create_prophet_results(stock_data)
