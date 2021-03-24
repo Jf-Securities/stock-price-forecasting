@@ -52,32 +52,13 @@ def create_files_dict(pth='./data/'):
     return all_data
 
 
-def plot_data(data, stock_name, pth='./figures/'):
-    '''
-    plot the data
-    '''
-    # create train and test
-    data["High"][:'2016'].plot(figsize=(16, 4), legend=True)
-    data["High"]['2017':].plot(figsize=(16, 4), legend=True)
-
-    # plot the data
-    plt.legend(['Training set (Before 2017)', 'Test set (2017 and beyond)'])
-    plt.title('{} stock price'.format(stock_name))
-    fig_path = os.path.join(pth, stock_name + '_train_test')
-
-    # save the data, pause, and close
-    plt.savefig(fig_path)
-    plt.pause(1)
-    plt.close()
-
-
 def create_dl_train_test_split(all_data):
     '''
     create training/testing data and scaler object
     '''
     # create training and test set
-    training_set = all_data[:-1].iloc[:, 1:2].values
-    test_set = all_data[-1:].iloc[:, 1:2].values
+    training_set = all_data[:-DAYS].iloc[:, 1:2].values
+    test_set = all_data[-DAYS:(-DAYS + 1)].iloc[:, 1:2].values
 
     # scale the data
     sc = MinMaxScaler(feature_range=(0, 1))
@@ -278,6 +259,7 @@ def predict_trend(model, X_test, sc):
         scaled_pred = predict_from_model(model, X_test)
         X_test = np.append(X_test, scaled_pred)[1:].reshape(X_test.shape[0], X_test.shape[1], 1)
         predicted_prices.append(sc.inverse_transform(scaled_pred))
+        print("confidence::", scaled_pred, "real value::", sc.inverse_transform(scaled_pred))
     return model, predicted_prices
 
 
@@ -287,6 +269,7 @@ def predict_trend_gru(model, X_test, sc):
         scaled_pred = predict_gru(model, X_test)
         X_test = np.append(X_test, scaled_pred)[1:].reshape(X_test.shape[0], X_test.shape[1], 1)
         predicted_prices.append(sc.inverse_transform(scaled_pred))
+        print("confidence::", scaled_pred, "real value::", sc.inverse_transform(scaled_pred))
     return model, predicted_prices
 
 
@@ -304,7 +287,7 @@ def plot_results(stock_data,
     '''
     plt.figure(figsize=(20, 5))
 
-    historyData = stock_data["High"][-120:].values[:-1]
+    historyData = stock_data["High"][-120:].values[:-DAYS]
 
     plt.plot(np.append(historyData, small_one_layer_preds), label='Single Layer Small RNN values', alpha=0.5)
     plt.plot(np.append(historyData, one_layer_preds), label='Single Layer RNN values', alpha=0.5)
@@ -313,7 +296,7 @@ def plot_results(stock_data,
     plt.plot(np.append(historyData, gru_drop_preds), label='GRU with dropout values', alpha=0.5)
     plt.plot(np.append(historyData, yearly_prophet_preds.reset_index()['yhat'].values[-10:]),
              label='prophet yearly predictions', alpha=0.5)
-    plt.plot(historyData, label='actual values', color='black')
+    plt.plot(stock_data["High"][-120:].values[:], label='actual values', color='black', alpha=0.5)
     plt.title('{} Predictions vs. Actual'.format(stock_name))
     plt.legend()
 
@@ -330,7 +313,7 @@ def process_data():
     i = 0
     for stock_name, stock_data in all_data.items():
         start = time.time() * 1000
-        if i > 50:
+        if i > 0:
             print("Max run count reached")
             break
         print("#", i, "PROCESSING::", stock_name)
@@ -373,58 +356,9 @@ def process_data():
         print("#", i, "runtime: ", (end - start) / 1000.0, "s")
 
 
-def process_data_without_training():
-    all_data = create_files_dict("/home/nischit/Desktop/data/")
-    i = 0
-    for stock_name, stock_data in all_data.items():
-        start = time.time() * 1000
-        if i > 50:
-            print("Max run count reached")
-            break
-        print("#", i, "PROCESSING::", stock_name)
-        # create dl data
-        X_train, y_train, X_test, sc = create_dl_train_test_split(stock_data)
-        if X_train is None:
-            print("Skipping this because insufficient data")
-            continue
-
-        small_single_layer_rnn, small_one_layer_preds = predict_trend(
-            create_single_layer_small_rnn_model(X_train, y_train), X_test,
-            sc)
-        #
-        # # create single layer rnn preds
-        single_layer_rnn, one_layer_preds = predict_trend(create_single_layer_rnn_model(X_train, y_train), X_test, sc)
-        #
-        # # rnn daily preds
-        rnn_model, rnn_preds = predict_trend(create_rnn_model(X_train, y_train), X_test, sc)
-        #
-        # # gru daily preds
-        gru_model, gru_preds = predict_trend_gru(create_GRU_model(X_train, y_train), X_test, sc)
-        #
-        # # gru daily preds
-        gru_drop_model, gru_drop_preds = predict_trend_gru(create_GRU_with_drop_out_model(X_train, y_train), X_test, sc)
-        #
-        # yearly preds
-        yearly_preds = create_prophet_results(stock_data)
-
-        # plot results
-        plot_results(stock_data,
-                     stock_name,
-                     small_one_layer_preds,
-                     one_layer_preds,
-                     rnn_preds,
-                     gru_preds,
-                     gru_drop_preds,
-                     yearly_preds
-                     )
-        i += 1
-        end = time.time() * 1000
-        print("#", i, "runtime: ", (end - start) / 1000.0, "s")
-
-
 if __name__ == '__main__':
-    try:
-        process_data()
-    except:
-        print("Something went wrong when processing data")
+    # try:
+    process_data()
+    # except:
+    #     print("Something went wrong when processing data")
     print("DONE!")
