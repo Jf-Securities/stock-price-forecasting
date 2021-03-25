@@ -3,6 +3,7 @@ Script to run time series models against all data in the \data folder.
 
 Author: @josh
 '''
+import csv
 import os
 import time
 
@@ -23,7 +24,7 @@ session = tf.compat.v1.Session(config=config)
 
 plt.style.use('fivethirtyeight')
 
-DAYS = 10
+DAYS = 1
 MODELS = {}
 
 
@@ -121,7 +122,7 @@ def create_single_layer_small_rnn_model(X_train, y_train):
     and make predictions on the X_test data
     '''
     # create a model
-    model = MODELS.get("single_layer_small_rnn_model")
+    model = None
     if model is None:
         model = Sequential()
         model.add(SimpleRNN(6))
@@ -146,7 +147,7 @@ def create_single_layer_rnn_model(X_train, y_train):
     and make predictions on the X_test data
     '''
     # create a model
-    model = MODELS.get("single_layer_rnn_model")
+    model = None
     if model is None:
         model = Sequential()
         model.add(SimpleRNN(32))
@@ -167,7 +168,7 @@ def create_rnn_model(X_train, y_train):
     and make predictions on the X_test data
     '''
     # create a model
-    model = MODELS.get("rnn_model")
+    model = None
     if model is None:
         model = Sequential()
         model.add(SimpleRNN(32, return_sequences=True))
@@ -191,7 +192,7 @@ def create_GRU_model(X_train, y_train):
     and make predictions on the X_test data
     '''
     # The GRU architecture
-    regressorGRU = MODELS.get("GRU_model")
+    regressorGRU = None
     if regressorGRU is None:
         regressorGRU = Sequential()
         # First GRU layer with Dropout regularisation
@@ -229,7 +230,7 @@ def create_GRU_with_drop_out_model(X_train, y_train):
     and make predictions on the X_test data
     '''
     # The GRU architecture
-    regressorGRU = MODELS.get("GRU_with_drop_out_model")
+    regressorGRU = None
     if regressorGRU is None:
         regressorGRU = Sequential()
         # First GRU layer with Dropout regularisation
@@ -283,21 +284,40 @@ def create_prophet_results(all_data):
     return forecast_prices
 
 
-def predict_trend(model, X_test, sc):
+PREDICTIONS = []
+
+
+def predict_trend(model_name, stock_name, real_price, model, X_test, sc):
     predicted_prices = []
+    pred = {}
     for i in range(0, DAYS):
         scaled_pred = predict_from_model(model, X_test)
         X_test = np.append(X_test, scaled_pred)[1:].reshape(X_test.shape[0], X_test.shape[1], 1)
         predicted_prices.append(sc.inverse_transform(scaled_pred))
+        pred["symbol"] = stock_name
+        pred["model_name"] = model_name
+        pred["previous"] = sc.inverse_transform(X_test[0])[-1][0]
+        pred["real"] = real_price
+        pred["confidence"] = scaled_pred[0][0]
+        pred["predicted"] = sc.inverse_transform(scaled_pred)[0][0]
+    PREDICTIONS.append(pred)
     return model, predicted_prices
 
 
-def predict_trend_gru(model, X_test, sc):
+def predict_trend_gru(model_name, stock_name, real_price, model, X_test, sc):
     predicted_prices = []
+    pred = {}
     for i in range(0, DAYS):
         scaled_pred = predict_gru(model, X_test)
         X_test = np.append(X_test, scaled_pred)[1:].reshape(X_test.shape[0], X_test.shape[1], 1)
         predicted_prices.append(sc.inverse_transform(scaled_pred))
+        pred["symbol"] = stock_name
+        pred["model_name"] = model_name
+        pred["previous"] = sc.inverse_transform(X_test[0])[-1][0]
+        pred["real"] = real_price
+        pred["confidence"] = scaled_pred[0][0]
+        pred["predicted"] = sc.inverse_transform(scaled_pred)[0][0]
+    PREDICTIONS.append(pred)
     return model, predicted_prices
 
 
@@ -330,7 +350,6 @@ def plot_results(stock_data,
                  rnn_preds,
                  gru_preds,
                  gru_drop_preds,
-                 yearly_prophet_preds,
                  plot_pth='./figures'):
     '''
     plot the results
@@ -344,9 +363,7 @@ def plot_results(stock_data,
     plt.plot(np.append(historyData, rnn_preds), label='RNN values', alpha=0.5)
     plt.plot(np.append(historyData, gru_preds), label='GRU without dropout values', alpha=0.5)
     plt.plot(np.append(historyData, gru_drop_preds), label='GRU with dropout values', alpha=0.5)
-    plt.plot(np.append(historyData, yearly_prophet_preds.reset_index()['yhat'].values[-10:]),
-             label='prophet yearly predictions', alpha=0.5)
-    plt.plot(historyData, label='actual values', color='black')
+    plt.plot(stock_data["High"][-120:].values, label='actual values', color='black', alpha=0.8)
     plt.title('{} Predictions vs. Actual'.format(stock_name))
     plt.legend()
 
@@ -363,7 +380,7 @@ def process_data():
     i = 0
     for stock_name, stock_data in all_data.items():
         start = time.time() * 1000
-        if i > 50:
+        if i > 0:
             print("Max run count reached")
             break
         print("#", i, "PROCESSING::", stock_name)
@@ -373,23 +390,33 @@ def process_data():
             print("Skipping this because insufficient data")
             continue
 
+        real_price = stock_data["High"][-1]
+
         small_single_layer_rnn, small_one_layer_preds = predict_trend(
-            create_single_layer_small_rnn_model(X_train, y_train), X_test, sc)
+            "small_single_layer_rnn", stock_name, real_price, create_single_layer_small_rnn_model(X_train, y_train),
+            X_test.copy(),
+            sc)
         #
         # # create single layer rnn preds
-        single_layer_rnn, one_layer_preds = predict_trend(create_single_layer_rnn_model(X_train, y_train), X_test, sc)
+        single_layer_rnn, one_layer_preds = predict_trend(
+            "single_layer_rnn", stock_name, real_price, create_single_layer_rnn_model(X_train, y_train), X_test.copy(),
+            sc)
         #
         # # rnn daily preds
-        rnn_model, rnn_preds = predict_trend(create_rnn_model(X_train, y_train), X_test, sc)
+        rnn_model, rnn_preds = predict_trend(
+            "rnn_model", stock_name, real_price, create_rnn_model(X_train, y_train), X_test.copy(), sc)
         #
         # # gru daily preds
-        gru_model, gru_preds = predict_trend_gru(create_GRU_model(X_train, y_train), X_test, sc)
+        gru_model, gru_preds = predict_trend_gru(
+            "gru_model", stock_name, real_price, create_GRU_model(X_train, y_train), X_test.copy(), sc)
         #
         # # gru daily preds
-        gru_drop_model, gru_drop_preds = predict_trend_gru(create_GRU_with_drop_out_model(X_train, y_train), X_test, sc)
+        gru_drop_model, gru_drop_preds = predict_trend_gru(
+            "gru_drop_model", stock_name, real_price, create_GRU_with_drop_out_model(X_train, y_train), X_test.copy(),
+            sc)
         #
         # yearly preds
-        yearly_preds = create_prophet_results(stock_data)
+        # yearly_preds = create_prophet_results(stock_data.copy())
 
         # plot results
         plot_results(stock_data,
@@ -399,19 +426,23 @@ def process_data():
                      rnn_preds,
                      gru_preds,
                      gru_drop_preds,
-                     yearly_preds
                      )
         i += 1
         end = time.time() * 1000
         print("#", i, "runtime: ", (end - start) / 1000.0, "s")
 
+    keys = PREDICTIONS[0].keys()
+    with open('/home/nischit/Desktop/predictions/predictions.csv', 'w', newline='') as output_file:
+        dict_writer = csv.DictWriter(output_file, keys)
+        dict_writer.writeheader()
+        dict_writer.writerows(PREDICTIONS)
+
 
 if __name__ == '__main__':
-
-    load_models()
-    try:
-        process_data()
-    except:
-        print("Something went wrong when processing data")
-    save_models()
+    # load_models()
+    # try:
+    process_data()
+    # except:
+    #     print("Something went wrong when processing data")
+    # save_models()
     print("DONE!")
